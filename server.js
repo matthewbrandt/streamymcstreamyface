@@ -107,13 +107,13 @@ async function computeFollowerData() {
 
   follower_velocity AS (
       SELECT *,
-            DATE_TRUNC('hour',followed_at::timestamp) AS followed_at_ts
+            DATE_TRUNC('hour', followed_at::TIMESTAMP) AS followed_at_ts
       FROM generate_series AS gs
-      LEFT JOIN user_followers AS uf ON DATE_TRUNC('hour',uf.followed_at::timestamp) = gs.full_ts
+              LEFT JOIN user_followers AS uf ON DATE_TRUNC('hour', uf.followed_at::TIMESTAMP) = gs.full_ts
   ),
 
   final AS (
-  SELECT DISTINCT to_timestamp(floor((extract('epoch' from full_ts) / 604800 )) * 604800) AS time_interval,
+  SELECT DISTINCT DATE_TRUNC('week', followed_at_ts) AS time_interval,
                   COUNT(DISTINCT from_id) AS new_followers
   FROM follower_velocity
   GROUP BY 1
@@ -128,13 +128,16 @@ async function computeFollowerData() {
           ELSE 'increase'
         END AS follower_growth
   FROM (
-  SELECT *,
-        (new_followers - LEAD(new_followers) OVER(ORDER BY time_interval DESC)) / new_followers::FLOAT AS follower_rate
+      SELECT *,
+            --handle divide by 0 case if the user has no new followers
+            (new_followers - LEAD(new_followers) OVER(ORDER BY time_interval DESC)) / new_followers::FLOAT AS follower_rate
 
-  FROM final)t
+      FROM final
+      WHERE time_interval IS NOT NULL)t
   ORDER BY time_interval DESC)
 
-  INSERT INTO followers_growth SELECT * FROM final_final;
+  INSERT INTO followers_growth
+  SELECT * FROM final_final;
   `;
 
   try {
